@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,6 +33,9 @@ import {
   Product,
   Recipe,
   StockLocationType,
+  RecipeIngredient,
+  IngredientUsage,
+  StockAdjustment,
 } from "@/types/inventory";
 import {
   Plus,
@@ -43,8 +46,17 @@ import {
   ArrowUpDown,
   AlertTriangle,
   CheckCircle,
+  Info,
+  Calculator,
 } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Mock data for sales
 const salesData: SalesData[] = [
@@ -236,6 +248,26 @@ export default function SalesAuditing() {
   >("all");
   const [isAddSaleDialogOpen, setIsAddSaleDialogOpen] = useState(false);
   const [showAuditResults, setShowAuditResults] = useState(false);
+  const [newSale, setNewSale] = useState<{
+    date: string;
+    productId: string;
+    quantity: number;
+    stockLocation: StockLocationType;
+    recipeId?: string;
+    notes?: string;
+  }>({
+    date: new Date().toISOString().split("T")[0],
+    productId: "",
+    quantity: 1,
+    stockLocation: "cozinha",
+  });
+  const [ingredientUsage, setIngredientUsage] = useState<IngredientUsage[]>([]);
+  const [stockAdjustments, setStockAdjustments] = useState<StockAdjustment[]>(
+    [],
+  );
+  const [calculatedAuditResults, setCalculatedAuditResults] = useState<
+    SalesAuditResult[]
+  >([]);
 
   const filteredSales = salesData.filter((sale) => {
     const matchesSearch = sale.productName
@@ -246,8 +278,127 @@ export default function SalesAuditing() {
     return matchesSearch && matchesLocation;
   });
 
+  // Function to calculate ingredient usage from recipes
+  const calculateIngredientUsage = () => {
+    const usage: Record<string, IngredientUsage> = {};
+
+    // Process all sales with recipes
+    filteredSales.forEach((sale) => {
+      if (sale.recipeId) {
+        const recipe = recipes.find((r) => r.id === sale.recipeId);
+        if (recipe) {
+          recipe.ingredients.forEach((ingredient) => {
+            const totalUsed = ingredient.quantity * sale.quantity;
+
+            if (!usage[ingredient.productId]) {
+              const product = products.find(
+                (p) => p.id === ingredient.productId,
+              );
+              usage[ingredient.productId] = {
+                productId: ingredient.productId,
+                productName: ingredient.productName,
+                totalUsed: totalUsed,
+                stockLocation: sale.stockLocation,
+                packageSize: 1, // Default package size (1 unit)
+                wholeUnitsToDeduct: 0,
+                remainingAmount: 0,
+              };
+            } else {
+              usage[ingredient.productId].totalUsed += totalUsed;
+            }
+          });
+        }
+      }
+    });
+
+    // Calculate whole units to deduct and remaining amounts
+    Object.values(usage).forEach((item) => {
+      // For simplicity, we're assuming each product has a standard package size of 1
+      // In a real system, this would come from the product data
+      item.wholeUnitsToDeduct = Math.floor(item.totalUsed);
+      item.remainingAmount = item.totalUsed - item.wholeUnitsToDeduct;
+    });
+
+    return Object.values(usage);
+  };
+
+  // Function to calculate stock adjustments
+  const calculateStockAdjustments = (usageData: IngredientUsage[]) => {
+    return usageData.map((usage) => {
+      const product = products.find((p) => p.id === usage.productId);
+      return {
+        productId: usage.productId,
+        productName: usage.productName,
+        expectedDeduction: usage.wholeUnitsToDeduct,
+        remainingAmount: usage.remainingAmount,
+        currentStock: product?.currentStock || 0,
+        stockLocation: usage.stockLocation,
+      };
+    });
+  };
+
+  // Function to calculate audit results
+  const calculateAuditResults = (adjustments: StockAdjustment[]) => {
+    return adjustments
+      .map((adjustment) => {
+        const product = products.find((p) => p.id === adjustment.productId);
+        if (!product) return null;
+
+        const expectedStock =
+          product.currentStock - adjustment.expectedDeduction;
+
+        return {
+          productId: adjustment.productId,
+          productName: adjustment.productName,
+          expectedStock: expectedStock,
+          actualStock: product.currentStock,
+          difference: product.currentStock - expectedStock,
+          stockLocation: adjustment.stockLocation,
+          remainingAmount: adjustment.remainingAmount,
+        };
+      })
+      .filter(Boolean) as SalesAuditResult[];
+  };
+
   const handleCompareWithStock = () => {
+    const usage = calculateIngredientUsage();
+    const adjustments = calculateStockAdjustments(usage);
+    const results = calculateAuditResults(adjustments);
+
+    setIngredientUsage(usage);
+    setStockAdjustments(adjustments);
+    setCalculatedAuditResults(results);
     setShowAuditResults(true);
+  };
+
+  const handleAddSale = () => {
+    // In a real app, this would add the sale to the database
+    console.log("Adding sale:", newSale);
+    setIsAddSaleDialogOpen(false);
+
+    // Reset form
+    setNewSale({
+      date: new Date().toISOString().split("T")[0],
+      productId: "",
+      quantity: 1,
+      stockLocation: "cozinha",
+    });
+  };
+
+  // Check if selected product is a recipe
+  const isRecipe = (productId: string) => {
+    return recipes.some((recipe) => recipe.id === productId);
+  };
+
+  // Get product or recipe name
+  const getItemName = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (product) return product.name;
+
+    const recipe = recipes.find((r) => r.id === productId);
+    if (recipe) return recipe.name;
+
+    return "";
   };
 
   return (
@@ -282,6 +433,10 @@ export default function SalesAuditing() {
                   <Input
                     id="date"
                     type="date"
+                    value={newSale.date}
+                    onChange={(e) =>
+                      setNewSale({ ...newSale, date: e.target.value })
+                    }
                     placeholder={t("enterSalesDate")}
                   />
                 </div>
@@ -292,7 +447,15 @@ export default function SalesAuditing() {
                   >
                     {t("stockLocation")}
                   </label>
-                  <Select defaultValue="cozinha">
+                  <Select
+                    value={newSale.stockLocation}
+                    onValueChange={(value) =>
+                      setNewSale({
+                        ...newSale,
+                        stockLocation: value as StockLocationType,
+                      })
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder={t("selectStockLocation")} />
                     </SelectTrigger>
@@ -310,20 +473,89 @@ export default function SalesAuditing() {
               </div>
               <div className="space-y-2">
                 <label htmlFor="product" className="text-sm font-medium">
-                  {t("product")}
+                  {t("itemType")}
                 </label>
-                <Select>
+                <Select
+                  value={newSale.productId}
+                  onValueChange={(value) => {
+                    const isRecipeItem = recipes.some((r) => r.id === value);
+                    setNewSale({
+                      ...newSale,
+                      productId: value,
+                      recipeId: isRecipeItem ? value : undefined,
+                    });
+                  }}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder={t("selectProduct")} />
+                    <SelectValue placeholder={t("selectItem")} />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="" disabled>
+                      {t("selectItem")}
+                    </SelectItem>
+
+                    {/* Products section */}
+                    <SelectItem
+                      value="products-header"
+                      disabled
+                      className="font-bold"
+                    >
+                      {t("products")}
+                    </SelectItem>
                     {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}
                       </SelectItem>
                     ))}
+
+                    {/* Recipes section */}
+                    <SelectItem
+                      value="recipes-header"
+                      disabled
+                      className="font-bold mt-2"
+                    >
+                      {t("recipes")}
+                    </SelectItem>
+                    {recipes.map((recipe) => (
+                      <SelectItem key={recipe.id} value={recipe.id}>
+                        {recipe.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+
+                {newSale.productId && newSale.recipeId && (
+                  <div className="mt-2 p-2 bg-muted rounded-md">
+                    <div className="flex items-center">
+                      <Badge variant="outline" className="mr-2">
+                        {t("recipe")}
+                      </Badge>
+                      <span className="text-sm">
+                        {recipes.find((r) => r.id === newSale.recipeId)?.name}
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <span className="text-xs text-muted-foreground">
+                        {t("recipeIngredients")}:
+                      </span>
+                      <div className="mt-1 space-y-1">
+                        {recipes
+                          .find((r) => r.id === newSale.recipeId)
+                          ?.ingredients.map((ing, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs flex justify-between"
+                            >
+                              <span>{ing.productName}</span>
+                              <span>
+                                {ing.quantity} {t("units")}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -333,6 +565,14 @@ export default function SalesAuditing() {
                   <Input
                     id="quantity"
                     type="number"
+                    min="1"
+                    value={newSale.quantity}
+                    onChange={(e) =>
+                      setNewSale({
+                        ...newSale,
+                        quantity: parseInt(e.target.value) || 1,
+                      })
+                    }
                     placeholder={t("enterQuantity")}
                   />
                 </div>
@@ -345,6 +585,15 @@ export default function SalesAuditing() {
                     type="number"
                     step="0.01"
                     placeholder={t("enterUnitPrice")}
+                    value={
+                      newSale.recipeId
+                        ? recipes.find((r) => r.id === newSale.recipeId)
+                            ?.sellingPrice || ""
+                        : products.find((p) => p.id === newSale.productId)
+                            ?.unitPrice || ""
+                    }
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
               </div>
@@ -352,7 +601,14 @@ export default function SalesAuditing() {
                 <label htmlFor="notes" className="text-sm font-medium">
                   {t("notes")}
                 </label>
-                <Input id="notes" placeholder={t("enterNotes")} />
+                <Input
+                  id="notes"
+                  placeholder={t("enterNotes")}
+                  value={newSale.notes || ""}
+                  onChange={(e) =>
+                    setNewSale({ ...newSale, notes: e.target.value })
+                  }
+                />
               </div>
             </div>
             <DialogFooter>
@@ -362,7 +618,10 @@ export default function SalesAuditing() {
               >
                 {t("cancel")}
               </Button>
-              <Button onClick={() => setIsAddSaleDialogOpen(false)}>
+              <Button
+                onClick={handleAddSale}
+                disabled={!newSale.productId || newSale.quantity < 1}
+              >
                 {t("add")}
               </Button>
             </DialogFooter>
@@ -528,66 +787,141 @@ export default function SalesAuditing() {
                 </Button>
               </div>
 
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("product")}</TableHead>
-                      <TableHead className="text-right">
-                        {t("expectedStock")}
-                      </TableHead>
-                      <TableHead className="text-right">
-                        {t("actualStock")}
-                      </TableHead>
-                      <TableHead className="text-right">
-                        {t("difference")}
-                      </TableHead>
-                      <TableHead>{t("stockLocation")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {auditResults
-                      .filter(
-                        (result) =>
-                          selectedLocation === "all" ||
-                          result.stockLocation === selectedLocation,
-                      )
-                      .map((result) => (
-                        <TableRow key={result.productId}>
-                          <TableCell className="font-medium">
-                            {result.productName}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {result.expectedStock}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {result.actualStock}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span
-                              className={
-                                result.difference !== 0
-                                  ? "text-destructive font-medium"
-                                  : "text-green-600 font-medium"
-                              }
-                            >
-                              {result.difference > 0 ? "+" : ""}
-                              {result.difference}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {t(result.stockLocation as keyof typeof t)}
-                          </TableCell>
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-2">
+                    {t("ingredientUsage")}
+                  </h3>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t("ingredient")}</TableHead>
+                          <TableHead className="text-right">
+                            {t("totalUsed")}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t("wholeUnitsToDeduct")}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t("remainingAmount")}
+                          </TableHead>
+                          <TableHead>{t("stockLocation")}</TableHead>
                         </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {ingredientUsage
+                          .filter(
+                            (usage) =>
+                              selectedLocation === "all" ||
+                              usage.stockLocation === selectedLocation,
+                          )
+                          .map((usage) => (
+                            <TableRow key={usage.productId}>
+                              <TableCell className="font-medium">
+                                {usage.productName}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {usage.totalUsed.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {usage.wholeUnitsToDeduct}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {usage.remainingAmount.toFixed(2)}
+                              </TableCell>
+                              <TableCell>
+                                {t(usage.stockLocation as keyof typeof t)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-medium mb-2">
+                    {t("stockDiscrepancies")}
+                  </h3>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t("product")}</TableHead>
+                          <TableHead className="text-right">
+                            {t("expectedStock")}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t("actualStock")}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t("difference")}
+                          </TableHead>
+                          <TableHead>{t("remainingAmount")}</TableHead>
+                          <TableHead>{t("stockLocation")}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {calculatedAuditResults
+                          .filter(
+                            (result) =>
+                              selectedLocation === "all" ||
+                              result.stockLocation === selectedLocation,
+                          )
+                          .map((result) => (
+                            <TableRow key={result.productId}>
+                              <TableCell className="font-medium">
+                                {result.productName}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {result.expectedStock}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {result.actualStock}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <span
+                                  className={
+                                    result.difference !== 0
+                                      ? "text-destructive font-medium"
+                                      : "text-green-600 font-medium"
+                                  }
+                                >
+                                  {result.difference > 0 ? "+" : ""}
+                                  {result.difference}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center justify-end cursor-help">
+                                        {result.remainingAmount.toFixed(2)}
+                                        <Info className="h-4 w-4 ml-1 text-muted-foreground" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{t("remainingAmountTooltip")}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
+                              <TableCell>
+                                {t(result.stockLocation as keyof typeof t)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-md border bg-card p-4">
                   <div className="flex items-center space-x-2 mb-4">
-                    {auditResults.some((r) => r.difference !== 0) ? (
+                    {calculatedAuditResults.some((r) => r.difference !== 0) ? (
                       <AlertTriangle className="h-5 w-5 text-destructive" />
                     ) : (
                       <CheckCircle className="h-5 w-5 text-green-600" />
@@ -597,18 +931,32 @@ export default function SalesAuditing() {
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span>{t("totalProducts")}:</span>
-                      <span>{auditResults.length}</span>
+                      <span>{calculatedAuditResults.length}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>{t("discrepancies")}:</span>
                       <span>
-                        {auditResults.filter((r) => r.difference !== 0).length}
+                        {
+                          calculatedAuditResults.filter(
+                            (r) => r.difference !== 0,
+                          ).length
+                        }
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>{t("recipeUsage")}:</span>
                       <span>
                         {salesData.filter((s) => s.recipeId).length}{" "}
+                        {t("items")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{t("pendingDeductions")}:</span>
+                      <span>
+                        {
+                          ingredientUsage.filter((i) => i.remainingAmount > 0)
+                            .length
+                        }{" "}
                         {t("items")}
                       </span>
                     </div>

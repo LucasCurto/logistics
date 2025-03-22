@@ -211,7 +211,8 @@ export const ptBR = {
 
   // Sales Auditing
   salesData: "Dados de Vendas",
-  enterSalesData: "Digite os dados de vendas",
+  enterSalesData: "Digite os dados de venda",
+  enterSalesDataDescription: "Digite os dados de venda",
   salesDate: "Data das Vendas",
   enterSalesDate: "Digite a data das vendas",
   salesQuantity: "Quantidade Vendida",
@@ -231,4 +232,20 @@ export const ptBR = {
   salesByLocation: "Vendas por Local",
   salesByCategory: "Vendas por Categoria",
   salesByProduct: "Vendas por Produto",
+  itemType: "Tipo de Item",
+  selectItem: "Selecionar Item",
+  recipes: "Receitas",
+  recipe: "Receita",
+  recipeIngredients: "Ingredientes da Receita",
+  units: "unidades",
+  ingredientUsage: "Uso de Ingredientes",
+  ingredient: "Ingrediente",
+  totalUsed: "Total Utilizado",
+  wholeUnitsToDeduct: "Unidades Inteiras a Deduzir",
+  remainingAmount: "Quantidade Restante",
+  remainingAmountTooltip:
+    "Quantidade que ainda não atingiu uma unidade inteira para dedução",
+  pendingDeductions: "Deduções Pendentes",
+  noAuditResultsYet: "Ainda não há resultados de auditoria",
+  compareStockToSeeResults: "Compare com o estoque para ver os resultados",
 };

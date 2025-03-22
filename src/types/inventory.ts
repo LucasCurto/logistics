@@ -131,6 +131,26 @@ export interface SalesAuditResult {
   actualStock: number;
   difference: number;
   stockLocation: StockLocationType;
+  remainingAmount: number;
+}
+
+export interface IngredientUsage {
+  productId: string;
+  productName: string;
+  totalUsed: number;
+  stockLocation: StockLocationType;
+  packageSize: number;
+  wholeUnitsToDeduct: number;
+  remainingAmount: number;
+}
+
+export interface StockAdjustment {
+  productId: string;
+  productName: string;
+  expectedDeduction: number;
+  remainingAmount: number;
+  currentStock: number;
+  stockLocation: StockLocationType;
 }
 
 export type UserRole = "admin" | "manager" | "staff";
