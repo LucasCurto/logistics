@@ -8,9 +8,12 @@ import {
   LogOut,
   Menu,
   X,
+  Store,
+  LineChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
 
 type NavItem = {
   title: string;
@@ -18,24 +21,34 @@ type NavItem = {
   icon: React.ReactNode;
 };
 
-const navItems: NavItem[] = [
+const getNavItems = (t: (key: string) => string): NavItem[] => [
   {
-    title: "Dashboard",
+    title: t("dashboard"),
     href: "/",
     icon: <LayoutDashboard className="h-5 w-5" />,
   },
   {
-    title: "Products",
+    title: t("productManagement"),
     href: "/products",
     icon: <Package className="h-5 w-5" />,
   },
   {
-    title: "Recipes",
+    title: t("recipeManagement"),
     href: "/recipes",
     icon: <FileSpreadsheet className="h-5 w-5" />,
   },
   {
-    title: "Reports",
+    title: t("supplierManagement"),
+    href: "/suppliers",
+    icon: <Store className="h-5 w-5" />,
+  },
+  {
+    title: t("salesAuditing"),
+    href: "/sales",
+    icon: <LineChart className="h-5 w-5" />,
+  },
+  {
+    title: t("reports"),
     href: "/reports",
     icon: <BarChart3 className="h-5 w-5" />,
   },
@@ -43,13 +56,15 @@ const navItems: NavItem[] = [
 
 export default function MainLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { t } = useLocale();
+  const navItems = getNavItems(t);
 
   return (
     <div className="min-h-screen bg-background flex">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 border-r bg-card">
         <div className="p-6">
-          <h1 className="text-2xl font-bold">Inventory</h1>
+          <h1 className="text-2xl font-bold">{t("inventoryManagement")}</h1>
         </div>
         <nav className="flex-1 px-4 py-2 space-y-1">
           {navItems.map((item) => (
@@ -70,7 +85,7 @@ export default function MainLayout() {
           <Button variant="outline" className="w-full justify-start" asChild>
             <Link to="/login">
               <LogOut className="mr-2 h-4 w-4" />
-              Log out
+              {t("logout")}
             </Link>
           </Button>
         </div>
@@ -80,7 +95,7 @@ export default function MainLayout() {
       <div className="flex-1 flex flex-col">
         {/* Mobile Header */}
         <header className="md:hidden border-b bg-card p-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold">Inventory</h1>
+          <h1 className="text-xl font-bold">{t("inventoryManagement")}</h1>
           <Button
             variant="ghost"
             size="icon"
@@ -119,7 +134,7 @@ export default function MainLayout() {
               >
                 <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
                   <LogOut className="mr-2 h-4 w-4" />
-                  Log out
+                  {t("logout")}
                 </Link>
               </Button>
             </nav>
